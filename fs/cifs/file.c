@@ -1522,18 +1522,31 @@ int cifs_fsync(struct file *file, struct dentry *dentry, int datasync)
 {
 	int xid;
 	int rc = 0;
+	struct cifs_sb_info *cifs_sb;
+	struct cifsTconInfo *pTcon;
+	struct cifsFileInfo *pSMBFile =
+		(struct cifsFileInfo *)file->private_data;
 	struct inode *inode = file->f_path.dentry->d_inode;
 
 	xid = GetXid();
 
+	cifs_sb = CIFS_SB(inode->i_sb);
+	pTcon = cifs_sb->tcon;
+
 	cFYI(1, ("Sync file - name: %s datasync: 0x%x",
 		dentry->d_name.name, datasync));
 
-	rc = filemap_write_and_wait(inode->i_mapping);
-	if (rc == 0) {
-		rc = CIFS_I(inode)->write_behind_rc;
-		CIFS_I(inode)->write_behind_rc = 0;
-	}
+	if (pSMBFile) {
+		rc = filemap_write_and_wait(inode->i_mapping);
+		if (rc == 0) {
+			rc = CIFS_I(inode)->write_behind_rc;
+			CIFS_I(inode)->write_behind_rc = 0;
+			if (pTcon)
+				rc = CIFSSMBFlush(xid, pTcon, pSMBFile->netfid);
+		}
+	} else
+		rc = -EBADF;
+
 	FreeXid(xid);
 	return rc;
 }
